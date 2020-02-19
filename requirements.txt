@@ -1,2 +1,2 @@
-qiskit-terra
+qiskit
 matplotlib
