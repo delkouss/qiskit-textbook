@@ -3,7 +3,7 @@
 user=delapuente
 org=qiskit-community
 repo=community.qiskit.org
-path=textbook
+path=qiskit-textbook
 
 if [[ $TRAVIS_BRANCH != "stable" ]] && [[ $TRAVIS_BRANCH != "" ]]
 then

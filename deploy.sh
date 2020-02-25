@@ -1,6 +1,6 @@
 #!/bin/bash
 
-path=textbook
+path=qiskit-textbook
 
 if [[ $TRAVIS_BRANCH != "stable" ]] && [[ $TRAVIS_BRANCH != "" ]]
 then
