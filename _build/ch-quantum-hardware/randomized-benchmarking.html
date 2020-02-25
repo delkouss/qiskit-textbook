@@ -1,0 +1,667 @@
+---
+interact_link: content/ch-quantum-hardware/randomized-benchmarking.ipynb
+kernel_name: python3
+kernel_path: content/ch-quantum-hardware
+has_widgets: false
+title: |-
+  Randomized Benchmarking
+pagenum: 36
+prev_page:
+  url: /ch-quantum-hardware/measurement-error-mitigation.html
+next_page:
+  url: /ch-quantum-hardware/measuring-quantum-volume.html
+suffix: .ipynb
+search: m rb n clifford sequence gates state alpha qubits textbf psi benchmarking randomized quantum error qubit sequences group probability fidelity frac alpham noise channel s c errors b km textit average parameter using j gambetta arxiv org pdf qiskit step ij example results lambda where e not gate depolarizing process tomography into jay simultaneous unitary rho rangle fit same q characterizing system account methods called d jerry chow john smolin r should random uniformly element initial operation circ measurement ground decay averaged also per necessarily end g bar u space information affecting via addition measurements gateset complete characterization because since
+
+comment: "***PROGRAMMATICALLY GENERATED, DO NOT EDIT. SEE ORIGINAL FILES IN /content***"
+---
+
+    <main class="jupyter-page">
+    <div id="page-info"></div>
+    <div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h1 id="Randomized-Benchmarking">Randomized Benchmarking<a class="anchor-link" href="#Randomized-Benchmarking"> </a></h1>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Introduction">Introduction<a class="anchor-link" href="#Introduction"> </a></h2><p>One of the main challenges in building a quantum information processor is the non-scalability of completely
+characterizing the noise affecting a quantum system via process tomography. In addition, process tomography is sensitive to noise in the pre- and post rotation gates plus the measurements (SPAM errors). Gateset tomography can take these errors into account, but the scaling is even worse.  A complete characterization
+of the noise is useful because it allows for  the determination of good error-correction schemes, and thus
+the possibility of reliable transmission of quantum information.</p>
+<p>Since complete process tomography is infeasible for large systems, there is growing interest in scalable
+methods for partially characterizing the noise affecting a quantum system. A scalable (in the number $n$ of qubits comprising the system) and robust algorithm for benchmarking the full set of Clifford gates by a single parameter using randomization techniques was presented in [1]. The concept of using randomization methods for benchmarking quantum gates is commonly called <strong>Randomized Benchmarking
+(RB)</strong>.</p>
+<h3 id="References">References<a class="anchor-link" href="#References"> </a></h3><ol>
+<li><p>Easwar Magesan, J. M. Gambetta, and Joseph Emerson, <em>Robust randomized benchmarking of quantum processes</em>,
+<a href="https://arxiv.org/pdf/1009.3639">https://arxiv.org/pdf/1009.3639</a></p>
+</li>
+<li><p>Easwar Magesan, Jay M. Gambetta, and Joseph Emerson, <em>Characterizing Quantum Gates via Randomized Benchmarking</em>,
+<a href="https://arxiv.org/pdf/1109.6887">https://arxiv.org/pdf/1109.6887</a></p>
+</li>
+<li><p>A. D. C'orcoles, Jay M. Gambetta, Jerry M. Chow, John A. Smolin, Matthew Ware, J. D. Strand, B. L. T. Plourde, and M. Steffen, <em>Process verification of two-qubit quantum gates by randomized benchmarking</em>, <a href="https://arxiv.org/pdf/1210.7011">https://arxiv.org/pdf/1210.7011</a></p>
+</li>
+<li><p>Jay M. Gambetta, A. D. C´orcoles, S. T. Merkel, B. R. Johnson, John A. Smolin, Jerry M. Chow,
+Colm A. Ryan, Chad Rigetti, S. Poletto, Thomas A. Ohki, Mark B. Ketchen, and M. Steffen,
+<em>Characterization of addressability by simultaneous randomized benchmarking</em>, <a href="https://arxiv.org/pdf/1204.6308">https://arxiv.org/pdf/1204.6308</a></p>
+</li>
+<li><p>David C. McKay, Sarah Sheldon, John A. Smolin, Jerry M. Chow, and Jay M. Gambetta, <em>Three Qubit Randomized Benchmarking</em>, <a href="https://arxiv.org/pdf/1712.06550">https://arxiv.org/pdf/1712.06550</a></p>
+</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="The-Randomized-Benchmarking-Protocol">The Randomized Benchmarking Protocol<a class="anchor-link" href="#The-Randomized-Benchmarking-Protocol"> </a></h2><p>A RB protocol (see [1,2]) consists of the following steps:</p>
+<p>(We should first import the relevant qiskit classes for the demonstration).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1">#Import general libraries (needed for functions)</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">from</span> <span class="nn">IPython</span> <span class="k">import</span> <span class="n">display</span>
+
+<span class="c1">#Import the RB Functions</span>
+<span class="kn">import</span> <span class="nn">qiskit.ignis.verification.randomized_benchmarking</span> <span class="k">as</span> <span class="nn">rb</span>
+
+<span class="c1">#Import Qiskit classes </span>
+<span class="kn">import</span> <span class="nn">qiskit</span>
+<span class="kn">from</span> <span class="nn">qiskit.providers.aer.noise</span> <span class="k">import</span> <span class="n">NoiseModel</span>
+<span class="kn">from</span> <span class="nn">qiskit.providers.aer.noise.errors.standard_errors</span> <span class="k">import</span> <span class="n">depolarizing_error</span><span class="p">,</span> <span class="n">thermal_relaxation_error</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Step-1:-Generate-RB-sequences">Step 1: Generate RB sequences<a class="anchor-link" href="#Step-1:-Generate-RB-sequences"> </a></h3><p>The RB sequences consist of random Clifford elements chosen uniformly from the Clifford group on $n$-qubits, 
+including a computed reversal element,
+that should return the qubits to the initial state.</p>
+<p>More precisely, for each length $m$, we choose $K_m$ RB sequences. 
+Each such sequence contains $m$ random elements $C_{i_j}$ chosen uniformly from the Clifford group on $n$-qubits, and the $m+1$ element is defined as follows: $C_{i_{m+1}} = (C_{i_1}\cdot ... \cdot C_{i_m})^{-1}$. It can be found efficiently by the Gottesmann-Knill theorem.</p>
+<p>For example, we generate below several sequences of 2-qubit Clifford circuits.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1">#Generate RB circuits (2Q RB)</span>
+
+<span class="c1">#number of qubits</span>
+<span class="n">nQ</span><span class="o">=</span><span class="mi">2</span> 
+<span class="n">rb_opts</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="c1">#Number of Cliffords in the sequence</span>
+<span class="n">rb_opts</span><span class="p">[</span><span class="s1">&#39;length_vector&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">75</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">125</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">175</span><span class="p">,</span> <span class="mi">200</span><span class="p">]</span>
+<span class="c1">#Number of seeds (random sequences)</span>
+<span class="n">rb_opts</span><span class="p">[</span><span class="s1">&#39;nseeds&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">5</span> 
+<span class="c1">#Default pattern</span>
+<span class="n">rb_opts</span><span class="p">[</span><span class="s1">&#39;rb_pattern&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">]]</span>
+
+<span class="n">rb_circs</span><span class="p">,</span> <span class="n">xdata</span> <span class="o">=</span> <span class="n">rb</span><span class="o">.</span><span class="n">randomized_benchmarking_seq</span><span class="p">(</span><span class="o">**</span><span class="n">rb_opts</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Making the n=2 Clifford Table
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>As an example, we print the circuit corresponding to the first RB sequence</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">rb_circs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>         ┌───┐┌───┐┌───┐     ┌───┐      ░      ┌───┐     ┌─────┐┌───┐┌───┐┌─┐
+qr_0: |0&gt;┤ H ├┤ H ├┤ S ├──■──┤ X ├──■───░───■──┤ X ├──■──┤ Sdg ├┤ H ├┤ H ├┤M├
+         └───┘└───┘└───┘┌─┴─┐└─┬─┘┌─┴─┐ ░ ┌─┴─┐└─┬─┘┌─┴─┐└─┬─┬─┘└───┘└───┘└╥┘
+qr_1: |0&gt;───────────────┤ X ├──■──┤ X ├─░─┤ X ├──■──┤ X ├──┤M├─────────────╫─
+                        └───┘     └───┘ ░ └───┘     └───┘  └╥┘             ║ 
+ cr_0: 0 ═══════════════════════════════════════════════════╬══════════════╩═
+                                                            ║                
+ cr_1: 0 ═══════════════════════════════════════════════════╩════════════════
+                                                                             
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>One can verify that the Unitary representing each RB circuit should be the identity (with a global phase). 
+We simulate this using Aer unitary simulator.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create a new circuit without the measurement</span>
+<span class="n">qregs</span> <span class="o">=</span> <span class="n">rb_circs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">qregs</span>
+<span class="n">cregs</span> <span class="o">=</span> <span class="n">rb_circs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">cregs</span>
+<span class="n">qc</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">QuantumCircuit</span><span class="p">(</span><span class="o">*</span><span class="n">qregs</span><span class="p">,</span> <span class="o">*</span><span class="n">cregs</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">rb_circs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="n">nQ</span><span class="p">]:</span>
+    <span class="n">qc</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># The Unitary is an identity (with a global phase)</span>
+<span class="n">backend</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">Aer</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="s1">&#39;unitary_simulator&#39;</span><span class="p">)</span>
+<span class="n">basis_gates</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;u1&#39;</span><span class="p">,</span><span class="s1">&#39;u2&#39;</span><span class="p">,</span><span class="s1">&#39;u3&#39;</span><span class="p">,</span><span class="s1">&#39;cx&#39;</span><span class="p">]</span> <span class="c1"># use U,CX for now</span>
+<span class="n">job</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">qc</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span> <span class="n">basis_gates</span><span class="o">=</span><span class="n">basis_gates</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">result</span><span class="p">()</span><span class="o">.</span><span class="n">get_unitary</span><span class="p">(),</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[[-0.-1.j -0.+0.j -0.-0.j -0.+0.j]
+ [-0.-0.j -0.-1.j  0.-0.j  0.+0.j]
+ [-0.+0.j -0.+0.j -0.-1.j  0.+0.j]
+ [-0.-0.j  0.-0.j -0.-0.j -0.-1.j]]
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Step-2:-Execute-the-RB-sequences-(with-some-noise)">Step 2: Execute the RB sequences (with some noise)<a class="anchor-link" href="#Step-2:-Execute-the-RB-sequences-(with-some-noise)"> </a></h3><p>We can execute the RB sequences either using Qiskit Aer Simulator (with some noise model) or using IBMQ provider, and obtain a list of results.</p>
+<p>By assumption each operation $C_{i_j}$ is allowed to have some error, represented by $\Lambda_{i_j,j}$, and each sequence can be modeled by the operation:</p>
+$$\textit{S}_{\textbf{i}_\textbf{m}} = \bigcirc_{j=1}^{m+1} (\Lambda_{i_j,j} \circ C_{i_j})$$<p>where ${\textbf{i}_\textbf{m}} = (i_1,...,i_m)$ and $i_{m+1}$ is uniquely determined by ${\textbf{i}_\textbf{m}}$.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Run on a noisy simulator</span>
+<span class="n">noise_model</span> <span class="o">=</span> <span class="n">NoiseModel</span><span class="p">()</span>
+<span class="c1"># Depolarizing_error</span>
+<span class="n">dp</span> <span class="o">=</span> <span class="mf">0.005</span> 
+<span class="n">noise_model</span><span class="o">.</span><span class="n">add_all_qubit_quantum_error</span><span class="p">(</span><span class="n">depolarizing_error</span><span class="p">(</span><span class="n">dp</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">[</span><span class="s1">&#39;u1&#39;</span><span class="p">,</span> <span class="s1">&#39;u2&#39;</span><span class="p">,</span> <span class="s1">&#39;u3&#39;</span><span class="p">])</span>
+<span class="n">noise_model</span><span class="o">.</span><span class="n">add_all_qubit_quantum_error</span><span class="p">(</span><span class="n">depolarizing_error</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">dp</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="s1">&#39;cx&#39;</span><span class="p">)</span>
+
+<span class="n">backend</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">Aer</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="s1">&#39;qasm_simulator&#39;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Step-3:-Get-statistics-about-the-survival-probabilities">Step 3: Get statistics about the survival probabilities<a class="anchor-link" href="#Step-3:-Get-statistics-about-the-survival-probabilities"> </a></h3><p>For each of the $K_m$ sequences the survival probability $Tr[E_\psi \textit{S}_{\textbf{i}_\textbf{m}}(\rho_\psi)]$
+is measured. 
+Here $\rho_\psi$ is the initial state taking into account preparation errors and $E_\psi$ is the
+POVM element that takes into account measurement errors.
+In the ideal (noise-free) case $\rho_\psi = E_\psi = | \psi {\rangle} {\langle} \psi |$.</p>
+<p>In practice one can measure the probability to go back to the exact initial state, i.e. all the qubits in the ground state $ {|} 00...0 {\rangle}$ or just the probability for one of the qubits to return back to the ground state. Measuring the qubits independently can be more convenient if a correlated measurement scheme is not possible. Both measurements will fit to the same decay parameter according to the properties of the <em>twirl</em>.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Step-4:-Find-the-averaged-sequence-fidelity">Step 4: Find the averaged sequence fidelity<a class="anchor-link" href="#Step-4:-Find-the-averaged-sequence-fidelity"> </a></h3><p>Average over the $K_m$ random realizations of the sequence to find the averaged sequence <strong>fidelity</strong>,</p>
+$$F_{seq}(m,|\psi{\rangle}) = Tr[E_\psi \textit{S}_{K_m}(\rho_\psi)]$$<p>where</p>
+$$\textit{S}_{K_m} = \frac{1}{K_m} \sum_{\textbf{i}_\textbf{m}} \textit{S}_{\textbf{i}_\textbf{m}}$$<p>is the average sequence operation.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Step-5:-Fit-the-results">Step 5: Fit the results<a class="anchor-link" href="#Step-5:-Fit-the-results"> </a></h3><p>Repeat Steps 1 through 4 for different values of $m$ and fit the results for the averaged sequence fidelity to the model:</p>
+$$ \textit{F}_{seq}^{(0)} \big(m,{|}\psi {\rangle} \big) = A_0 \alpha^m +B_0$$<p>where $A_0$ and $B_0$ absorb state preparation and measurement errors as well as an edge effect from the
+error on the final gate.</p>
+<p>$\alpha$ determines the average error-rate $r$, which is also called <strong>Error per Clifford (EPC)</strong> 
+according to the relation</p>
+$$ r = 1-\alpha-\frac{1-\alpha}{2^n} = \frac{2^n-1}{2^n}(1-\alpha)$$<p>(where $n=nQ$ is the number of qubits).</p>
+<p>As an example, we calculate the average sequence fidelity for each of the RB sequences, fit the results to the exponential curve, and compute the parameters $\alpha$ and EPC.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create the RB fitter</span>
+<span class="n">backend</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">Aer</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="s1">&#39;qasm_simulator&#39;</span><span class="p">)</span>
+<span class="n">basis_gates</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;u1&#39;</span><span class="p">,</span><span class="s1">&#39;u2&#39;</span><span class="p">,</span><span class="s1">&#39;u3&#39;</span><span class="p">,</span><span class="s1">&#39;cx&#39;</span><span class="p">]</span> 
+<span class="n">shots</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="n">qobj_list</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">rb_fit</span> <span class="o">=</span> <span class="n">rb</span><span class="o">.</span><span class="n">RBFitter</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">xdata</span><span class="p">,</span> <span class="n">rb_opts</span><span class="p">[</span><span class="s1">&#39;rb_pattern&#39;</span><span class="p">])</span>
+<span class="k">for</span> <span class="n">rb_seed</span><span class="p">,</span><span class="n">rb_circ_seed</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">rb_circs</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Compiling seed </span><span class="si">%d</span><span class="s1">&#39;</span><span class="o">%</span><span class="k">rb_seed</span>)
+    <span class="n">new_rb_circ_seed</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">compiler</span><span class="o">.</span><span class="n">transpile</span><span class="p">(</span><span class="n">rb_circ_seed</span><span class="p">,</span> <span class="n">basis_gates</span><span class="o">=</span><span class="n">basis_gates</span><span class="p">)</span>
+    <span class="n">qobj</span> <span class="o">=</span> <span class="n">qiskit</span><span class="o">.</span><span class="n">compiler</span><span class="o">.</span><span class="n">assemble</span><span class="p">(</span><span class="n">new_rb_circ_seed</span><span class="p">,</span> <span class="n">shots</span><span class="o">=</span><span class="n">shots</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Simulating seed </span><span class="si">%d</span><span class="s1">&#39;</span><span class="o">%</span><span class="k">rb_seed</span>)
+    <span class="n">job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">qobj</span><span class="p">,</span> <span class="n">noise_model</span><span class="o">=</span><span class="n">noise_model</span><span class="p">,</span> <span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;max_parallel_experiments&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">})</span>
+    <span class="n">qobj_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">qobj</span><span class="p">)</span>
+    <span class="c1"># Add data to the fitter</span>
+    <span class="n">rb_fit</span><span class="o">.</span><span class="n">add_data</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">result</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;After seed </span><span class="si">%d</span><span class="s1">, alpha: </span><span class="si">%f</span><span class="s1">, EPC: </span><span class="si">%f</span><span class="s1">&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">rb_seed</span><span class="p">,</span><span class="n">rb_fit</span><span class="o">.</span><span class="n">fit</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">rb_fit</span><span class="o">.</span><span class="n">fit</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;epc&#39;</span><span class="p">]))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Compiling seed 0
+Simulating seed 0
+After seed 0, alpha: 0.975038, EPC: 0.018722
+Compiling seed 1
+Simulating seed 1
+After seed 1, alpha: 0.973533, EPC: 0.019850
+Compiling seed 2
+Simulating seed 2
+After seed 2, alpha: 0.975037, EPC: 0.018722
+Compiling seed 3
+Simulating seed 3
+After seed 3, alpha: 0.974774, EPC: 0.018920
+Compiling seed 4
+Simulating seed 4
+After seed 4, alpha: 0.972476, EPC: 0.020643
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Plot-the-results">Plot the results<a class="anchor-link" href="#Plot-the-results"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplot</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Plot the essence by calling plot_rb_data</span>
+<span class="n">rb_fit</span><span class="o">.</span><span class="n">plot_rb_data</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">add_label</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">show_plt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    
+<span class="c1"># Add title and label</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%d</span><span class="s1"> Qubit RB&#39;</span><span class="o">%</span><span class="p">(</span><span class="n">nQ</span><span class="p">),</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/randomized-benchmarking_18_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="The-intuition-behind-RB">The intuition behind RB<a class="anchor-link" href="#The-intuition-behind-RB"> </a></h3><p>The depolarizing quantum channel has a parameter $\alpha$, and works like this: with probability $\alpha$, the state remains the same as before; with probability $1-\alpha$, the state becomes the totally mixed state, namely:</p>
+$$\rho_f = \alpha \rho_i + \frac{1-\alpha}{2^n} * \mathbf{I}$$<p>Suppose that we have a sequence of $m$ gates, not necessarily Clifford gates, 
+where the error channel of the gates is a depolarizing channel with parameter $\alpha$ 
+(same $\alpha$ for all the gates). 
+Then with probability $\alpha^m$ the state is correct at the end of the sequence, 
+and with probability $1-\alpha^m$ it becomes the totally mixed state, therefore:</p>
+$$\rho_f^m = \alpha^m \rho_i + \frac{1-\alpha^m}{2^n} * \mathbf{I}$$<p>Now suppose that in addition we start with the ground state; 
+that the entire sequence amounts to the identity; 
+and that we measure the state at the end of the sequence with the standard basis. 
+We derive that the probability of success at the end of the sequence is:</p>
+$$\alpha^m + \frac{1-\alpha^m}{2^n} = \frac{2^n-1}{2^n}\alpha^m + \frac{1}{2^n} =  A_0\alpha^m + B_0$$<p>It follows that the probability of success, aka fidelity, decays exponentially with the sequence length, with exponent $\alpha$.</p>
+<p>The last statement is not necessarily true when the channel is other than the depolarizing channel. However, it turns out that if the gates are uniformly-randomized Clifford gates, then the noise of each gate behaves on average as if it was the depolarizing channel, with some parameter that can be computed from the channel, and we obtain the exponential decay of the fidelity.</p>
+<p>Formally, taking an average over a finite group $G$ (like the Clifford group) of a quantum channel $\bar \Lambda$ is also called a <em>twirl</em>:</p>
+$$ W_G(\bar \Lambda) \frac{1}{|G|} \sum_{u \in G} U^{\dagger} \circ  \bar \Lambda \circ U$$<p>Twirling over the entire unitary group yields exactly the same result as the Clifford group. The Clifford group is a <em>2-design</em> of the unitary group.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Simultaneous-Randomized-Benchmarking">Simultaneous Randomized Benchmarking<a class="anchor-link" href="#Simultaneous-Randomized-Benchmarking"> </a></h2><p>RB is designed to address fidelities in multiqubit systems in two ways. For one, RB over the full $n$-qubit space
+can be performed by constructing sequences from the $n$-qubit Clifford group. Additionally, the $n$-qubit space
+can be subdivided into sets of qubits $\{n_i\}$ and $n_i$-qubit RB performed in each subset simultaneously [4]. 
+Both methods give metrics of fidelity in the $n$-qubit space.</p>
+<p>For example, it is common to perform 2Q RB on the subset of two-qubits defining a CNOT gate while the other qubits are quiescent. As explained in [4], this RB data will not necessarily decay exponentially because the other qubit subspaces are not twirled. Subsets are more rigorously characterized by simultaneous RB, which also measures some level of crosstalk error since all qubits are active.</p>
+<p>An example of simultaneous RB (1Q RB and 2Q RB) can be found in: 
+<a href="https://github.com/Qiskit/qiskit-tutorials/blob/master/qiskit/ignis/randomized_benchmarking.ipynb">https://github.com/Qiskit/qiskit-tutorials/blob/master/qiskit/ignis/randomized_benchmarking.ipynb</a></p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Predicted-Gate-Fidelity">Predicted Gate Fidelity<a class="anchor-link" href="#Predicted-Gate-Fidelity"> </a></h2><p>If we know the errors on the underlying gates (the gateset) we can predict the fidelity. First we need to count the number of these gates per Clifford.</p>
+<p>Then, the two qubit Clifford gate error function gives the error per 2Q Clifford. It assumes that the error in the underlying gates is depolarizing. This function is derived in the supplement to [5].</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1">#Count the number of single and 2Q gates in the 2Q Cliffords</span>
+<span class="n">gates_per_cliff</span> <span class="o">=</span> <span class="n">rb</span><span class="o">.</span><span class="n">rb_utils</span><span class="o">.</span><span class="n">gates_per_clifford</span><span class="p">(</span><span class="n">qobj_list</span><span class="p">,</span> <span class="n">xdata</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">basis_gates</span><span class="p">,</span> <span class="n">rb_opts</span><span class="p">[</span><span class="s1">&#39;rb_pattern&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">basis_gates</span><span class="p">)):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of </span><span class="si">%s</span><span class="s2"> gates per Clifford: </span><span class="si">%f</span><span class="s2">&quot;</span><span class="o">%</span><span class="p">(</span><span class="n">basis_gates</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                                                 <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">gates_per_cliff</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">],</span><span class="n">gates_per_cliff</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="n">i</span><span class="p">]])))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Number of u1 gates per Clifford: 0.244214
+Number of u2 gates per Clifford: 1.024017
+Number of u3 gates per Clifford: 0.422707
+Number of cx gates per Clifford: 1.500437
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Prepare lists of the number of qubits and the errors</span>
+<span class="n">ngates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">ngates</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">gates_per_cliff</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">ngates</span><span class="p">[</span><span class="mi">3</span><span class="p">:</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">gates_per_cliff</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">ngates</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">gates_per_cliff</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">gate_qubits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">gate_errs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">gate_qubits</span><span class="p">))</span>
+<span class="n">gate_errs</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">]]</span> <span class="o">=</span> <span class="n">dp</span><span class="o">/</span><span class="mi">2</span> <span class="c1">#convert from depolarizing error to epg (1Q)</span>
+<span class="n">gate_errs</span><span class="p">[[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="n">dp</span><span class="o">/</span><span class="mi">2</span> <span class="c1">#convert from depolarizing error to epg (1Q)</span>
+<span class="n">gate_errs</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">dp</span><span class="o">*</span><span class="mi">3</span><span class="o">/</span><span class="mi">4</span> <span class="c1">#convert from depolarizing error to epg (2Q)</span>
+
+<span class="c1">#Calculate the predicted epc</span>
+<span class="n">pred_epc</span> <span class="o">=</span> <span class="n">rb</span><span class="o">.</span><span class="n">rb_utils</span><span class="o">.</span><span class="n">twoQ_clifford_error</span><span class="p">(</span><span class="n">ngates</span><span class="p">,</span><span class="n">gate_qubits</span><span class="p">,</span><span class="n">gate_errs</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Predicted 2Q Error per Clifford: </span><span class="si">%e</span><span class="s2">&quot;</span><span class="o">%</span><span class="k">pred_epc</span>)
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Predicted 2Q Error per Clifford: 1.670159e-02
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">qiskit</span>
+<span class="n">qiskit</span><span class="o">.</span><span class="n">__qiskit_version__</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>{&#39;qiskit-terra&#39;: &#39;0.12.0&#39;,
+ &#39;qiskit-aer&#39;: &#39;0.4.0&#39;,
+ &#39;qiskit-ignis&#39;: &#39;0.2.0&#39;,
+ &#39;qiskit-ibmq-provider&#39;: &#39;0.4.6&#39;,
+ &#39;qiskit-aqua&#39;: &#39;0.6.4&#39;,
+ &#39;qiskit&#39;: &#39;0.15.0&#39;}</pre>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+ 
+
+
+    </main>
+    

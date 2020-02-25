@@ -1,0 +1,3166 @@
+---
+redirect_from:
+  - "/ch-quantum-hardware/accessing-higher-energy-states"
+interact_link: content/ch-quantum-hardware/accessing_higher_energy_states.ipynb
+kernel_name: python3
+kernel_path: content/ch-quantum-hardware
+has_widgets: false
+title: |-
+  Accessing Higher Energy States
+pagenum: 33
+prev_page:
+  url: /ch-quantum-hardware/calibrating-qubits-openpulse.html
+next_page:
+  url: /ch-quantum-hardware/error-correction-repetition-code.html
+suffix: .ipynb
+search: rangle rightarrow frequency our pulse states state pi discriminator data id rabi schedule sweep centroid using build phi qiskit measure apply separatrix iq obtain plot higher org discrim experiment sideband lda j ej dagger omega drive method into c point model s energy quantum section qubits openpulse refs where standard step fit set scikit learn lo hardware html notebook additional here system given alpha between discriminating builddiscrim freq qubit perform define next calibrated b plane above corresponds half testing program d m however not focus classify prior chapter ref physics much superconducting arxiv n cos frac oscillator large importing begin
+
+comment: "***PROGRAMMATICALLY GENERATED, DO NOT EDIT. SEE ORIGINAL FILES IN /content***"
+---
+
+    <main class="jupyter-page">
+    <div id="page-info"></div>
+    <div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h1 id="Accessing-higher-energy-states-with-Qiskit-Pulse">Accessing higher energy states with Qiskit Pulse<a class="anchor-link" href="#Accessing-higher-energy-states-with-Qiskit-Pulse"> </a></h1>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>In most quantum algorithms/applications, computations are carried out over a 2-dimensional space spanned by $|0\rangle$ and $|1\rangle$. In IBM's hardware, however, there also exist higher energy states which are not typically used. The focus of this section is to explore these states using Qiskit Pulse. In particular, we demonstrate how to excite the $|2\rangle$ state and build a discriminator to classify the $|0\rangle$, $|1\rangle$ and $|2\rangle$ states.</p>
+<p>We recommend reviewing the prior <a href="https://qiskit.org/textbook/ch-quantum-hardware/calibrating-qubits-openpulse.html">chapter</a> before going through this notebook. We also suggest reading the OpenPulse specifications (Ref <a href="#refs">1</a>).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Physics-Background">Physics Background<a class="anchor-link" href="#Physics-Background"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We now give some additional background on the physics of transmon qubits, the basis for much of IBM's quantum hardware. These systems contain superconducting circuits composed of a Josephson junction and capacitor. For those unfamilar with superconducting circuits, see the review <a href="https://arxiv.org/pdf/1904.06560.pdf">here</a> (Ref. <a href="#refs">2</a>). The Hamiltonian of this system is given by</p>
+$$
+H = 4 E_C n^2 - E_J \cos(\phi),
+$$<p>where $E_C, E_J$ denote the capacitor and Josephson energies, $n$ is the reduced charge number operator and $\phi$ is the reduced flux across the junction. We work in units with $\hbar=1$.</p>
+<p>Transmon qubits are defined in the regime where $\phi$ is small, so we may expand $E_J \cos(\phi)$ in a Taylor series (ignoring constant terms)</p>
+$$
+E_J \cos(\phi) \approx \frac{1}{2} E_J \phi^2 - \frac{1}{24} E_J \phi^4 + \mathcal{O}(\phi^6).
+$$<p>The quadratic term $\phi^2$ defines the standard harmonic oscillator. Each additional term contributes an anharmonicity.</p>
+<p>Using the relations $n \sim (a-a^\dagger), \phi \sim (a+a^\dagger)$ (for raising, lowering operators $a^\dagger, a$), it can be shown that the system resembles a Duffing oscillator with Hamiltonian
+$$
+H = \omega a^\dagger a + \frac{\alpha}{2} a^\dagger a^\dagger a a,
+$$</p>
+<p>where $\omega$ gives the $0\rightarrow1$ excitation frequency ($\omega \equiv \omega^{0\rightarrow1}$) and $\alpha$ is the anharmonicity between the $0\rightarrow1$ and $1\rightarrow2$ frequencies ($\alpha \equiv \omega^{1\rightarrow2} - \omega^{0\rightarrow1}$). Drive terms can be added as needed.</p>
+<p>If we choose to specialize to the standard 2-dimensional subspace, we can make $|\alpha|$ sufficiently large or use special control techniques to suppress the higher energy states.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h1 id="Contents">Contents<a class="anchor-link" href="#Contents"> </a></h1><ol>
+<li><a href="#importing">Getting started</a></li>
+<li><a href="#discrim01">Discriminating the 0 and 1 states</a><ol>
+<li><a href="#freqsweep01">0-&gt;1 Frequency Sweep</a></li>
+<li><a href="#rabi01">0-&gt;1 Rabi Experiment</a></li>
+<li><a href="#builddiscrim01">Build the 0,1 discriminator</a></li>
+</ol>
+</li>
+<li><a href="#discrim012">Discriminating the 0, 1 and 2 states</a><ol>
+<li><a href="#freq12">Computing the 1-&gt;2 Frequency</a><ol>
+<li><a href="#sideband12">1-&gt;2 Frequency Sweep using the sideband method</a></li>
+</ol>
+</li>
+<li><a href="#rabi12">1-&gt;2 Rabi Experiment</a></li>
+<li><a href="#builddiscrim012">Build the 0, 1, 2 discriminator</a></li>
+</ol>
+</li>
+<li><a href="#refs">References</a></li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="0.-Getting-Started-">0. Getting Started <a id="importing" /><a class="anchor-link" href="#0.-Getting-Started-"> </a></h2>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We begin by importing dependencies and defining some default variable values. We choose qubit 0 to run our experiments. We perform our experiments on the publicly available single qubit device <code>ibmq_armonk</code>.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">curve_fit</span>
+<span class="kn">from</span> <span class="nn">scipy.signal</span> <span class="k">import</span> <span class="n">find_peaks</span>
+
+<span class="kn">from</span> <span class="nn">sklearn.discriminant_analysis</span> <span class="k">import</span> <span class="n">LinearDiscriminantAnalysis</span>
+<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="k">import</span> <span class="n">train_test_split</span>
+
+<span class="kn">import</span> <span class="nn">qiskit.pulse</span> <span class="k">as</span> <span class="nn">pulse</span>
+<span class="kn">import</span> <span class="nn">qiskit.pulse.pulse_lib</span> <span class="k">as</span> <span class="nn">pulse_lib</span>
+<span class="kn">from</span> <span class="nn">qiskit.compiler</span> <span class="k">import</span> <span class="n">assemble</span>
+<span class="kn">from</span> <span class="nn">qiskit.pulse.commands</span> <span class="k">import</span> <span class="n">SamplePulse</span>
+
+<span class="kn">from</span> <span class="nn">qiskit.tools.monitor</span> <span class="k">import</span> <span class="n">job_monitor</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">warnings</span>
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s1">&#39;ignore&#39;</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">qiskit.tools.jupyter</span> <span class="k">import</span> <span class="o">*</span>
+<span class="o">%</span><span class="k">matplotlib</span> inline
+
+<span class="kn">from</span> <span class="nn">qiskit</span> <span class="k">import</span> <span class="n">IBMQ</span>
+<span class="n">IBMQ</span><span class="o">.</span><span class="n">load_account</span><span class="p">()</span>
+<span class="n">provider</span> <span class="o">=</span> <span class="n">IBMQ</span><span class="o">.</span><span class="n">get_provider</span><span class="p">(</span><span class="n">hub</span><span class="o">=</span><span class="s1">&#39;ibm-q&#39;</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="s1">&#39;open&#39;</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s1">&#39;main&#39;</span><span class="p">)</span>
+<span class="n">backend</span> <span class="o">=</span> <span class="n">provider</span><span class="o">.</span><span class="n">get_backend</span><span class="p">(</span><span class="s1">&#39;ibmq_armonk&#39;</span><span class="p">)</span>
+
+<span class="n">backend_config</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">configuration</span><span class="p">()</span>
+<span class="k">assert</span> <span class="n">backend_config</span><span class="o">.</span><span class="n">open_pulse</span><span class="p">,</span> <span class="s2">&quot;Backend doesn&#39;t support OpenPulse&quot;</span>
+
+<span class="n">dt</span> <span class="o">=</span> <span class="n">backend_config</span><span class="o">.</span><span class="n">dt</span>
+
+<span class="n">backend_defaults</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">defaults</span><span class="p">()</span>
+
+<span class="c1"># unit conversion factors -&gt; all backend properties returned in SI (Hz, sec, etc)</span>
+<span class="n">GHz</span> <span class="o">=</span> <span class="mf">1.0e9</span> <span class="c1"># Gigahertz</span>
+<span class="n">MHz</span> <span class="o">=</span> <span class="mf">1.0e6</span> <span class="c1"># Megahertz</span>
+<span class="n">us</span> <span class="o">=</span> <span class="mf">1.0e-6</span> <span class="c1"># Microseconds</span>
+<span class="n">ns</span> <span class="o">=</span> <span class="mf">1.0e-9</span> <span class="c1"># Nanoseconds</span>
+
+<span class="n">qubit</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># qubit we will analyze</span>
+<span class="n">default_qubit_freq</span> <span class="o">=</span> <span class="n">backend_defaults</span><span class="o">.</span><span class="n">qubit_freq_est</span><span class="p">[</span><span class="n">qubit</span><span class="p">]</span> <span class="c1"># Default qubit frequency in Hz. </span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;Qubit </span><span class="si">{qubit}</span><span class="s2"> has an estimated frequency of {default_qubit_freq/ GHz} GHz.&quot;</span><span class="p">)</span>
+
+<span class="c1"># scale data (specific to each device)</span>
+<span class="n">scale_factor</span> <span class="o">=</span> <span class="mf">1e-14</span>
+
+<span class="c1"># number of shots for our experiments</span>
+<span class="n">NUM_SHOTS</span> <span class="o">=</span> <span class="mi">1024</span>
+
+<span class="c1">### Collect the necessary channels</span>
+<span class="n">drive_chan</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">DriveChannel</span><span class="p">(</span><span class="n">qubit</span><span class="p">)</span>
+<span class="n">meas_chan</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">MeasureChannel</span><span class="p">(</span><span class="n">qubit</span><span class="p">)</span>
+<span class="n">acq_chan</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">AcquireChannel</span><span class="p">(</span><span class="n">qubit</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Qubit 0 has an estimated frequency of 4.974289607532142 GHz.
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We define some additional helper functions.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">get_job_data</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">average</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Retrieve data from a job that has already run.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        job (Job): The job whose data you want.</span>
+<span class="sd">        average (bool): If True, gets the data assuming data is an average.</span>
+<span class="sd">                        If False, gets the data assuming it is for single shots.</span>
+<span class="sd">    Return:</span>
+<span class="sd">        list: List containing job result data. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">job_results</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">result</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">120</span><span class="p">)</span> <span class="c1"># timeout parameter set to 120 s</span>
+    <span class="n">result_data</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">job_results</span><span class="o">.</span><span class="n">results</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">average</span><span class="p">:</span> <span class="c1"># get avg data</span>
+            <span class="n">result_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job_results</span><span class="o">.</span><span class="n">get_memory</span><span class="p">(</span><span class="n">i</span><span class="p">)[</span><span class="n">qubit</span><span class="p">]</span><span class="o">*</span><span class="n">scale_factor</span><span class="p">)</span> 
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># get single data</span>
+            <span class="n">result_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job_results</span><span class="o">.</span><span class="n">get_memory</span><span class="p">(</span><span class="n">i</span><span class="p">)[:,</span> <span class="n">qubit</span><span class="p">]</span><span class="o">*</span><span class="n">scale_factor</span><span class="p">)</span>  
+    <span class="k">return</span> <span class="n">result_data</span>
+
+<span class="k">def</span> <span class="nf">get_closest_multiple_of_16</span><span class="p">(</span><span class="n">num</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Compute the nearest multiple of 16. Needed because pulse enabled devices require </span>
+<span class="sd">    durations which are multiples of 16 samples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">num</span><span class="p">)</span><span class="o">%</span><span class="k">16</span>))
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Next we include some default parameters for drive pulses and measurement. We pull the <code>measure</code> command from the instruction schedule map (from backend defaults), so that it is updated with new calibrations.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Drive pulse parameters (us = microseconds)</span>
+<span class="n">drive_sigma_us</span> <span class="o">=</span> <span class="mf">0.075</span>                     <span class="c1"># This determines the actual width of the gaussian</span>
+<span class="n">drive_samples_us</span> <span class="o">=</span> <span class="n">drive_sigma_us</span><span class="o">*</span><span class="mi">8</span>        <span class="c1"># This is a truncating parameter, because gaussians don&#39;t have </span>
+                                           <span class="c1"># a natural finite length</span>
+
+<span class="n">drive_sigma</span> <span class="o">=</span> <span class="n">get_closest_multiple_of_16</span><span class="p">(</span><span class="n">drive_sigma_us</span> <span class="o">*</span> <span class="n">us</span> <span class="o">/</span><span class="n">dt</span><span class="p">)</span>       <span class="c1"># The width of the gaussian in units of dt</span>
+<span class="n">drive_samples</span> <span class="o">=</span> <span class="n">get_closest_multiple_of_16</span><span class="p">(</span><span class="n">drive_samples_us</span> <span class="o">*</span> <span class="n">us</span> <span class="o">/</span><span class="n">dt</span><span class="p">)</span>   <span class="c1"># The truncating parameter in units of dt</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Find out which measurement map index is needed for this qubit</span>
+<span class="n">meas_map_idx</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">measure_group</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">backend_config</span><span class="o">.</span><span class="n">meas_map</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">qubit</span> <span class="ow">in</span> <span class="n">measure_group</span><span class="p">:</span>
+        <span class="n">meas_map_idx</span> <span class="o">=</span> <span class="n">i</span>
+        <span class="k">break</span>
+<span class="k">assert</span> <span class="n">meas_map_idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span> <span class="n">f</span><span class="s2">&quot;Couldn&#39;t find qubit </span><span class="si">{qubit}</span><span class="s2"> in the meas_map!&quot;</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get default measurement pulse from instruction schedule map</span>
+<span class="n">inst_sched_map</span> <span class="o">=</span> <span class="n">backend_defaults</span><span class="o">.</span><span class="n">instruction_schedule_map</span>
+<span class="n">measure</span> <span class="o">=</span> <span class="n">inst_sched_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;measure&#39;</span><span class="p">,</span> <span class="n">qubits</span><span class="o">=</span><span class="n">backend_config</span><span class="o">.</span><span class="n">meas_map</span><span class="p">[</span><span class="n">meas_map_idx</span><span class="p">])</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="1.-Discriminating-the-$|0\rangle$-and-$|1\rangle$-states-">1. Discriminating the $|0\rangle$ and $|1\rangle$ states <a id="discrim01" /><a class="anchor-link" href="#1.-Discriminating-the-$|0\rangle$-and-$|1\rangle$-states-"> </a></h2>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>In this section, we build a discriminator for our standard $|0\rangle$ and $|1\rangle$ states. The job of the discriminator is to take <code>meas_level=1</code> complex data and classify it into the standard $|0\rangle$ and $|1\rangle$ states (<code>meas_level=2</code>). This will replicate much of the work of the prior <a href="https://qiskit.org/textbook/ch-quantum-hardware/calibrating-qubits-openpulse.html">chapter</a>. These results are necessary for exciting the higher energy states which are the focus of this notebook.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="1A.-0-&gt;1-Frequency-Sweep--">1A. 0-&gt;1 Frequency Sweep  <a id="freqsweep01" /><a class="anchor-link" href="#1A.-0-&gt;1-Frequency-Sweep--"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The first step in building a discriminator is to calibrate our qubit frequency, as done in the prior chapter.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">create_ground_freq_sweep_program</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="n">drive_power</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Builds a program that does a freq sweep by exciting the ground state. </span>
+<span class="sd">    Depending on drive power this can reveal the 0-&gt;1 frequency or the 0-&gt;2 frequency. </span>
+<span class="sd">    Args:</span>
+<span class="sd">        freqs (np.ndarray(dtype=float)): Numpy array of frequencies to sweep.</span>
+<span class="sd">        drive_power (float) : Value of drive amplitude.</span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: Raised if use more than 75 frequencies; currently, an error will be thrown on the backend </span>
+<span class="sd">                    if you try to do this.</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Qobj: Program for ground freq sweep experiment.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">75</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;You can only run 75 schedules at a time.&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># print information on the sweep</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;The frequency sweep will go from {freqs[0] / GHz} GHz to {freqs[-1]/ GHz} GHz </span><span class="se">\</span>
+<span class="s2">using {len(freqs)} frequencies. The drive power is </span><span class="si">{drive_power}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Define the drive pulse</span>
+    <span class="n">ground_sweep_drive_pulse</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span>
+                                                  <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span>
+                                                  <span class="n">amp</span><span class="o">=</span><span class="n">drive_power</span><span class="p">,</span>
+                                                  <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ground_sweep_drive_pulse&#39;</span><span class="p">)</span>
+    <span class="c1"># Create the base schedule</span>
+    <span class="n">schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;Frequency sweep starting from ground state.&#39;</span><span class="p">)</span>
+    
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">ground_sweep_drive_pulse</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span>
+    
+    <span class="c1"># define frequencies for the sweep</span>
+    <span class="n">schedule_freqs</span> <span class="o">=</span> <span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">freq</span><span class="p">}</span> <span class="k">for</span> <span class="n">freq</span> <span class="ow">in</span> <span class="n">freqs</span><span class="p">]</span>
+
+    <span class="c1"># assemble the program</span>
+    <span class="c1"># Note: we only require a single schedule since each does the same thing;</span>
+    <span class="c1"># for each schedule, the LO frequency that mixes down the drive changes</span>
+    <span class="c1"># this enables our frequency sweep</span>
+    <span class="n">ground_freq_sweep_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">(</span><span class="n">schedule</span><span class="p">,</span>
+                                         <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span> 
+                                         <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                                         <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;avg&#39;</span><span class="p">,</span>
+                                         <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                                         <span class="n">schedule_los</span><span class="o">=</span><span class="n">schedule_freqs</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">ground_freq_sweep_program</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># We will sweep 40 MHz around the estimated frequency, with 75 frequencies</span>
+<span class="n">num_freqs</span> <span class="o">=</span> <span class="mi">75</span>
+<span class="n">ground_sweep_freqs</span> <span class="o">=</span> <span class="n">default_qubit_freq</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">20</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="mi">20</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="n">num_freqs</span><span class="p">)</span>
+<span class="n">ground_freq_sweep_program</span> <span class="o">=</span> <span class="n">create_ground_freq_sweep_program</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="p">,</span> <span class="n">drive_power</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>The frequency sweep will go from 4.954289607532142 GHz to 4.994289607532142 GHz using 75 frequencies. The drive power is 0.3.
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">ground_freq_sweep_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">ground_freq_sweep_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">ground_freq_sweep_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">ground_freq_sweep_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e50034135d9840018cc58e9
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get the job data (average)</span>
+<span class="n">ground_freq_sweep_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">ground_freq_sweep_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We fit our data to a Lorentzian curve and extract the calibrated frequency.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">fit_function</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span><span class="p">,</span> <span class="n">function</span><span class="p">,</span> <span class="n">init_params</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Fit a function using scipy curve_fit.&quot;&quot;&quot;</span>
+    <span class="n">fitparams</span><span class="p">,</span> <span class="n">conv</span> <span class="o">=</span> <span class="n">curve_fit</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">x_values</span><span class="p">,</span> <span class="n">y_values</span><span class="p">,</span> <span class="n">init_params</span><span class="p">)</span>
+    <span class="n">y_fit</span> <span class="o">=</span> <span class="n">function</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="o">*</span><span class="n">fitparams</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">fitparams</span><span class="p">,</span> <span class="n">y_fit</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># do fit in Hz</span>
+<span class="p">(</span><span class="n">ground_sweep_fit_params</span><span class="p">,</span> 
+ <span class="n">ground_sweep_y_fit</span><span class="p">)</span> <span class="o">=</span> <span class="n">fit_function</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="p">,</span>
+                                   <span class="n">ground_freq_sweep_data</span><span class="p">,</span> 
+                                   <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">q_freq</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">C</span><span class="p">:</span> <span class="p">(</span><span class="n">A</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">B</span> <span class="o">/</span> <span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">q_freq</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">B</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span> <span class="o">+</span> <span class="n">C</span><span class="p">,</span>
+                                   <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mf">4.975</span><span class="o">*</span><span class="n">GHz</span><span class="p">,</span> <span class="mi">1</span><span class="o">*</span><span class="n">GHz</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="n">GHz</span><span class="p">]</span> <span class="c1"># initial parameters for curve_fit</span>
+                                   <span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Note: we are only plotting the real part of the signal</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">,</span> <span class="n">ground_freq_sweep_data</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">,</span> <span class="n">ground_sweep_y_fit</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">([</span><span class="nb">min</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">ground_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">)])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Frequency [GHz]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Measured Signal [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;0-&gt;1 Frequency Sweep&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_27_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">_</span><span class="p">,</span> <span class="n">cal_qubit_freq</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ground_sweep_fit_params</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;We&#39;ve updated our qubit frequency estimate from &quot;</span>
+      <span class="n">f</span><span class="s2">&quot;{round(default_qubit_freq/GHz, 7)} GHz to {round(cal_qubit_freq/GHz, 7)} GHz.&quot;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>We&#39;ve updated our qubit frequency estimate from 4.9742896 GHz to 4.9743499 GHz.
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="1B.-0-&gt;1-Rabi-Experiment-">1B. 0-&gt;1 Rabi Experiment <a id="rabi01" /><a class="anchor-link" href="#1B.-0-&gt;1-Rabi-Experiment-"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Next, we perform a Rabi experiment to compute the $0\rightarrow1 ~ \pi$ pulse amplitude. Recall, a $\pi$ pulse is a pulse that takes us from the $|0\rangle$ to $|1\rangle$ state (a $\pi$ rotation on the Bloch sphere).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># experimental configuration</span>
+<span class="n">num_rabi_points</span> <span class="o">=</span> <span class="mi">50</span> <span class="c1"># number of experiments (ie amplitudes to sweep out)</span>
+
+<span class="c1"># Drive amplitude values to iterate over: 50 amplitudes evenly spaced from 0 to 0.75</span>
+<span class="n">drive_amp_min</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">drive_amp_max</span> <span class="o">=</span> <span class="mf">0.75</span>
+<span class="n">drive_amps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">drive_amp_min</span><span class="p">,</span> <span class="n">drive_amp_max</span><span class="p">,</span> <span class="n">num_rabi_points</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create schedule</span>
+<span class="n">rabi_01_schedules</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="c1"># loop over all drive amplitudes</span>
+<span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">drive_amp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">):</span>
+    <span class="c1"># drive pulse</span>
+    <span class="n">rabi_01_pulse</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span> 
+                                       <span class="n">amp</span><span class="o">=</span><span class="n">drive_amp</span><span class="p">,</span> 
+                                       <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span> 
+                                       <span class="n">name</span><span class="o">=</span><span class="s1">&#39;rabi_01_pulse_</span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">ii</span><span class="p">)</span>
+    
+    <span class="c1"># add commands to schedule</span>
+    <span class="n">schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;Rabi Experiment at drive amp = </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">drive_amp</span><span class="p">)</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">rabi_01_pulse</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span> <span class="c1"># shift measurement to after drive pulse</span>
+    <span class="n">rabi_01_schedules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">schedule</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Assemble the schedules into a program</span>
+<span class="c1"># Note: We drive at the calibrated frequency.</span>
+<span class="n">rabi_01_expt_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">(</span><span class="n">rabi_01_schedules</span><span class="p">,</span>
+                                <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+                                <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                                <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;avg&#39;</span><span class="p">,</span>
+                                <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                                <span class="n">schedule_los</span><span class="o">=</span><span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">cal_qubit_freq</span><span class="p">}]</span>
+                                               <span class="o">*</span> <span class="n">num_rabi_points</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">rabi_01_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">rabi_01_expt_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">rabi_01_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">rabi_01_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e5003d5ee081a00191ad82c
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get the job data (average)</span>
+<span class="n">rabi_01_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">rabi_01_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">baseline_remove</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Center data around 0.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Note: Only real part of data is plotted</span>
+<span class="n">rabi_01_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">baseline_remove</span><span class="p">(</span><span class="n">rabi_01_data</span><span class="p">))</span>
+<span class="p">(</span><span class="n">rabi_01_fit_params</span><span class="p">,</span> 
+ <span class="n">rabi_01_y_fit</span><span class="p">)</span> <span class="o">=</span> <span class="n">fit_function</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span>
+                               <span class="n">rabi_01_data</span><span class="p">,</span> 
+                               <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">drive_01_period</span><span class="p">,</span> <span class="n">phi</span><span class="p">:</span> <span class="p">(</span><span class="n">A</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">x</span><span class="o">/</span><span class="n">drive_01_period</span> <span class="o">-</span> <span class="n">phi</span><span class="p">)</span> <span class="o">+</span> <span class="n">B</span><span class="p">),</span>
+                               <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="o">-</span><span class="mi">4</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span> <span class="n">rabi_01_data</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span> <span class="n">rabi_01_y_fit</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+
+<span class="n">drive_01_period</span> <span class="o">=</span> <span class="n">rabi_01_fit_params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> 
+<span class="c1"># account for phi in computing pi amp</span>
+<span class="n">pi_amp_01</span> <span class="o">=</span> <span class="p">(</span><span class="n">drive_01_period</span><span class="o">/</span><span class="mi">2</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">+</span><span class="n">rabi_01_fit_params</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">pi_amp_01</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s1">&#39;--&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">pi_amp_01</span><span class="o">+</span><span class="n">drive_01_period</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s1">&#39;--&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_01</span><span class="o">+</span><span class="n">drive_01_period</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">xytext</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_01</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span> <span class="n">arrowprops</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">arrowstyle</span><span class="o">=</span><span class="s2">&quot;&lt;-&gt;&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="s2">&quot;$\pi$&quot;</span><span class="p">,</span> <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_01</span><span class="o">-</span><span class="mf">0.03</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Drive amp [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Measured signal [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;0-&gt;1 Rabi Experiment&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_38_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;Pi Amplitude (0-&gt;1) = </span><span class="si">{pi_amp_01}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Pi Amplitude (0-&gt;1) = 0.24157817491272462
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Using these results, we define our $0\rightarrow1$ $\pi$ pulse.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">pi_pulse_01</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span>
+                                 <span class="n">amp</span><span class="o">=</span><span class="n">pi_amp_01</span><span class="p">,</span> 
+                                 <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span>
+                                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;pi_pulse_01&#39;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="1C.-Build-the-0,1-discriminator-">1C. Build the 0,1 discriminator <a id="builddiscrim01" /><a class="anchor-link" href="#1C.-Build-the-0,1-discriminator-"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Now that we have our calibrated frequency and $\pi$ pulse, we can build a discriminator for $|0\rangle$ and $1\rangle$ states. The discriminator works by taking <code>meas_level=1</code> data in the IQ plane and classifying it into a $|0\rangle$ or a $1\rangle$.</p>
+<p>The $|0\rangle$ and $|1\rangle$ states form coherent circular "blobs" in the IQ plane, which are known as centroids. The center of the centroid defines the exact, no-noise IQ point for each state. The surrounding cloud shows the variance in the data, which is generated from a variety of noise sources.</p>
+<p>We apply a machine learning technique, Linear Discriminant Analysis, to discriminate (distinguish) between $|0\rangle$ and $|1\rangle$. This is a common technique for classifying qubit states.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Our first step is to get the centroid data. To do so, we define two schedules (recalling that our system is in the $|0\rangle$ state to start):</p>
+<ol>
+<li>Measure the $|0\rangle$ state directly (obtain $|0\rangle$ centroid).</li>
+<li>Apply a $\pi$ pulse and then measure (obtain $|1\rangle$ centroid).</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create the two schedules</span>
+
+<span class="c1"># Ground state schedule</span>
+<span class="n">zero_schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;zero schedule&quot;</span><span class="p">)</span>
+<span class="n">zero_schedule</span> <span class="o">|=</span> <span class="n">measure</span>
+
+<span class="c1"># Excited state schedule</span>
+<span class="n">one_schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;one schedule&quot;</span><span class="p">)</span>
+<span class="n">one_schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_01</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> 
+<span class="n">one_schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">one_schedule</span><span class="o">.</span><span class="n">duration</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Assemble the schedules into a program</span>
+<span class="n">IQ_01_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">([</span><span class="n">zero_schedule</span><span class="p">,</span> <span class="n">one_schedule</span><span class="p">],</span>
+                          <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+                          <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                          <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;single&#39;</span><span class="p">,</span>
+                          <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                          <span class="n">schedule_los</span><span class="o">=</span><span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">cal_qubit_freq</span><span class="p">}]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">IQ_01_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">IQ_01_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">IQ_01_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">IQ_01_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e500454e0084d001878dbff
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get job data (single); split for zero and one</span>
+<span class="n">IQ_01_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">IQ_01_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">zero_data</span> <span class="o">=</span> <span class="n">IQ_01_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">one_data</span> <span class="o">=</span> <span class="n">IQ_01_data</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">IQ_01_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Helper function for plotting IQ plane for |0&gt;, |1&gt;. Limits of plot given</span>
+<span class="sd">    as arguments.&quot;&quot;&quot;</span>
+    <span class="c1"># zero data plotted in blue</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">zero_data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">zero_data</span><span class="p">),</span> 
+                    <span class="n">s</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$|0\rangle$&#39;</span><span class="p">)</span>
+    <span class="c1"># one data plotted in red</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">one_data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">one_data</span><span class="p">),</span> 
+                    <span class="n">s</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$|1\rangle$&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Plot a large dot for the average result of the zero and one states.</span>
+    <span class="n">mean_zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">zero_data</span><span class="p">)</span> <span class="c1"># takes mean of both real and imaginary parts</span>
+    <span class="n">mean_one</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">one_data</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">mean_zero</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">mean_zero</span><span class="p">),</span> 
+                <span class="n">s</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span><span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">mean_one</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">mean_one</span><span class="p">),</span> 
+                <span class="n">s</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span><span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="n">y_min</span><span class="p">,</span><span class="n">y_max</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;I [a.u.]&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Q [a.u.]&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;0-1 discrimination&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Below, we display the IQ plot. The blue centroid denotes the $|0\rangle$ state, while the red centroid denotes the $|1\rangle$ state. (Note: If the plot looks off, rerun the notebook)</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">x_min</span> <span class="o">=</span> <span class="o">-</span><span class="mi">5</span>
+<span class="n">x_max</span> <span class="o">=</span> <span class="mi">15</span>
+<span class="n">y_min</span> <span class="o">=</span> <span class="o">-</span><span class="mi">5</span>
+<span class="n">y_max</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">IQ_01_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_52_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Now it is time to actually build the discriminator. As mentioned above, we will use a machine learning technique called Linear Discriminant Analysis (LDA). LDA classifies an arbitrary data set into a set of categories (here $|0\rangle$, $|1\rangle$) by maximizing the distance between the means of each category and minimizing the variance within each category. For further detail, see <a href="https://scikit-learn.org/stable/modules/lda_qda.html#id4">here</a> (Ref. <a href="#refs">3</a>).</p>
+<p>LDA generates a line called a separatrix. Depending on which side of the separatrix a given data point is on, we can determine which category it belongs to. In our example, one side of the separatrix corresponds to $|0\rangle$ states and the other to $|1\rangle$ states.</p>
+<p>We train our model using the first half of our data and test it on the second half. We use <code>scikit.learn</code> for an implementation of LDA; in a future release, this functionality will be added released directly into Qiskit-Ignis (see  <a href="https://github.com/Qiskit/qiskit-ignis/tree/master/qiskit/ignis/measurement/discriminator">here</a>).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We begin by reshaping our result data into a format suitable for discrimination.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">reshape_complex_vec</span><span class="p">(</span><span class="n">vec</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Take in complex vector vec and return 2d array w/ real, imag entries. This is needed for the learning.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        vec (list): complex vector of data</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: vector w/ entries given by (real(vec], imag(vec))</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vec</span><span class="p">)</span>
+    <span class="n">vec_reshaped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">length</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vec</span><span class="p">)):</span>
+        <span class="n">vec_reshaped</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">vec</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">vec</span><span class="p">[</span><span class="n">i</span><span class="p">])]</span>
+    <span class="k">return</span> <span class="n">vec_reshaped</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create IQ vector (split real, imag parts)</span>
+<span class="n">zero_data_reshaped</span> <span class="o">=</span> <span class="n">reshape_complex_vec</span><span class="p">(</span><span class="n">zero_data</span><span class="p">)</span>
+<span class="n">one_data_reshaped</span> <span class="o">=</span> <span class="n">reshape_complex_vec</span><span class="p">(</span><span class="n">one_data</span><span class="p">)</span>  
+
+<span class="n">IQ_01_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">zero_data_reshaped</span><span class="p">,</span> <span class="n">one_data_reshaped</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">IQ_01_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="c1"># verify IQ data shape</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>(2048, 2)
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Next, we split our training and testing data. We test using a state vector with our expected results (an array of <code>0</code>'s for the ground schedule and <code>1</code>s for the excited schedule).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># construct vector w/ 0&#39;s and 1&#39;s (for testing)</span>
+<span class="n">state_01</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">NUM_SHOTS</span><span class="p">)</span> <span class="c1"># shots gives number of experiments</span>
+<span class="n">state_01</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">state_01</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">NUM_SHOTS</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">state_01</span><span class="p">))</span>
+
+<span class="c1"># Shuffle and split data into training and test sets</span>
+<span class="n">IQ_01_train</span><span class="p">,</span> <span class="n">IQ_01_test</span><span class="p">,</span> <span class="n">state_01_train</span><span class="p">,</span> <span class="n">state_01_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span><span class="n">IQ_01_data</span><span class="p">,</span> <span class="n">state_01</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>2048
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Finally, we set up our model and train it. The accuracy of our fit is printed.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Set up the LDA</span>
+<span class="n">LDA_01</span> <span class="o">=</span> <span class="n">LinearDiscriminantAnalysis</span><span class="p">()</span>
+<span class="n">LDA_01</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">IQ_01_train</span><span class="p">,</span> <span class="n">state_01_train</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>LinearDiscriminantAnalysis(n_components=None, priors=None, shrinkage=None,
+                           solver=&#39;svd&#39;, store_covariance=False, tol=0.0001)</pre>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># test on some simple data </span>
+<span class="nb">print</span><span class="p">(</span><span class="n">LDA_01</span><span class="o">.</span><span class="n">predict</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">]]))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[0. 1.]
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Compute accuracy</span>
+<span class="n">score_01</span> <span class="o">=</span> <span class="n">LDA_01</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">IQ_01_test</span><span class="p">,</span> <span class="n">state_01_test</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">score_01</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>0.908203125
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The last step is to plot the separatrix.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Plot separatrix on top of scatter</span>
+<span class="k">def</span> <span class="nf">separatrixPlot</span><span class="p">(</span><span class="n">lda</span><span class="p">,</span> <span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">,</span> <span class="n">shots</span><span class="p">):</span>
+    <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span> <span class="o">=</span> <span class="n">shots</span><span class="p">,</span> <span class="n">shots</span>
+
+    <span class="n">xx</span><span class="p">,</span> <span class="n">yy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">),</span>
+                         <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">))</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">lda</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="n">xx</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">yy</span><span class="o">.</span><span class="n">ravel</span><span class="p">()])</span>
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">xx</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">contour</span><span class="p">(</span><span class="n">xx</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">],</span> <span class="n">linewidths</span><span class="o">=</span><span class="mf">2.</span><span class="p">,</span> <span class="n">colors</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+
+<span class="n">IQ_01_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">)</span>
+<span class="n">separatrixPlot</span><span class="p">(</span><span class="n">LDA_01</span><span class="p">,</span> <span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">,</span> <span class="n">NUM_SHOTS</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_64_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We see how each side of the separatrix corresponds to a centroid (and hence a state). Given a point in the IQ plane, our model checks which side of the separatrix it lies on and returns the corresponding state.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="2.-Discriminating-the-$|0\rangle$,-$|1\rangle$-and-$|2\rangle$-states-">2. Discriminating the $|0\rangle$, $|1\rangle$ and $|2\rangle$ states <a id="discrim012" /><a class="anchor-link" href="#2.-Discriminating-the-$|0\rangle$,-$|1\rangle$-and-$|2\rangle$-states-"> </a></h2>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Now that we have calibrated the $0, 1$ discriminator, we move on to exciting higher energy states. Specifically, we focus on exciting the $|2\rangle$ state and building a discriminator to classify $|0\rangle$, $|1\rangle$ and $2\rangle$ states from their respective IQ data points. The procedure for even higher states ($|3\rangle$, $|4\rangle$, etc) should be similar, but we have not tested them explicitly.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The process for building the higher state discriminator is as follows:</p>
+<ol>
+<li>Compute the $1\rightarrow2$ frequency.</li>
+<li>Conduct a Rabi experiment to obtain the $\pi$ pulse amplitude for $1\rightarrow2$. To do this, we first apply a $0\rightarrow1$ $\pi$ pulse to get from the $|0\rangle$ to the $|1\rangle$ state. Then, we do a sweep of drive amplitudes at the $1\rightarrow2$ frequency obtained above.</li>
+<li>Construct 3 schedules:\
+ a. Zero schedule: just measure the ground state.\
+ b. One schedule: apply a $0\rightarrow1$ $\pi$ pulse and measure.\
+ c. Two schedule: apply a $0\rightarrow1$ $\pi$ pulse, then a $1\rightarrow2$ $\pi$ pulse and measure.</li>
+<li>Separate the data from each schedule into training and testing sets and construct an LDA model for discrimination.</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="2A.-Computing-the-1-&gt;2-frequency-">2A. Computing the 1-&gt;2 frequency <a id="freq12" /><a class="anchor-link" href="#2A.-Computing-the-1-&gt;2-frequency-"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The first step in our calibration is to compute the frequency needed to go from the $1\rightarrow2$ state. There are two methods to do this:</p>
+<ol>
+<li>Do a frequency sweep from the ground state and apply very high power. If the applied power is large enough, two peaks should be observed. One at the $0\rightarrow1$ frequency found in section <a href="#discrim01">1</a> and one at the $0\rightarrow2$ frequency. The $1\rightarrow2$ frequency can be obtained by taking the difference of the two. Unfortunately, for <code>ibmq_armonk</code>, the maximum drive power of $1.0$ is not sufficient to see this transition. Instead, we turn to the second method.</li>
+<li>Excite the $|1\rangle$ state by applying a $0\rightarrow1$ $\pi$ pulse. Then perform the frequency sweep over excitations of the $|1\rangle$ state. A single peak should be observed at a frequency lower than the $0\rightarrow1$ frequency which corresponds to the $1\rightarrow2$ frequency.</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h4 id="1-&gt;2-Frequency-Sweep-using-the-sideband-method-">1-&gt;2 Frequency Sweep using the sideband method <a id="sideband12" /><a class="anchor-link" href="#1-&gt;2-Frequency-Sweep-using-the-sideband-method-"> </a></h4>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We follow the second method described above. To drive the $0\rightarrow 1$ $\pi$ pulse, we require a local oscillator (LO) frequency given by the calibrated $0\rightarrow1$ frequency <code>cal_qubit_freq</code> (see construction of the Rabi $\pi$ pulse in section <a href="#discrim01">1</a>). To sweep the range for the $1\rightarrow2$ frequency, however, we require varying the LO frequency. Unfortunately, the OpenPulse specification requires a single LO frequency per schedule.</p>
+<p>To resolve this, we set the LO frequency to <code>cal_qubit_freq</code> and multiply a sine function onto the $1\rightarrow2$ pulse at <code>freq-cal_qubit_freq</code>, where <code>freq</code> is the desired scan frequency. Applying the sinusoidal sideband, as it's known, enables us to change the LO frequency without manually setting it when assembling the program.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">apply_sideband</span><span class="p">(</span><span class="n">pulse</span><span class="p">,</span> <span class="n">freq</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Apply a sinusoidal sideband to this pulse at frequency freq.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        pulse (SamplePulse): The pulse of interest.</span>
+<span class="sd">        freq (float): LO frequency for which we want to apply the sweep.</span>
+<span class="sd">    Return:</span>
+<span class="sd">        SamplePulse: Pulse with a sideband applied (oscillates at difference between freq and cal_qubit_freq).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># time goes from 0 to dt*drive_samples, sine arg of form 2*pi*f*t</span>
+    <span class="n">t_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dt</span><span class="o">*</span><span class="n">drive_samples</span><span class="p">,</span> <span class="n">drive_samples</span><span class="p">)</span>
+    <span class="n">sine_pulse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="p">(</span><span class="n">freq</span><span class="o">-</span><span class="n">cal_qubit_freq</span><span class="p">)</span><span class="o">*</span><span class="n">t_samples</span><span class="p">)</span> <span class="c1"># no amp for the sine</span>
+    
+    <span class="c1"># create sample pulse w/ sideband applied</span>
+    <span class="c1"># Note: need to make sq_pulse.samples real, multiply elementwise</span>
+    <span class="n">sideband_pulse</span> <span class="o">=</span> <span class="n">SamplePulse</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">multiply</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">pulse</span><span class="o">.</span><span class="n">samples</span><span class="p">),</span> <span class="n">sine_pulse</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;sideband_pulse&#39;</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">sideband_pulse</span>    
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We wrap the logic for assembling the program in a method and run our program.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">create_excited_freq_sweep_program</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="n">drive_power</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Builds a program that does a freq sweep by exciting the |1&gt; state. </span>
+<span class="sd">    This allows us to obtain the 1-&gt;2 frequency. We get from the |0&gt; to |1&gt;</span>
+<span class="sd">    state via a pi pulse using the calibrated qubit frequency. To do the </span>
+<span class="sd">    frequency sweep from |1&gt; to |2&gt;, we use a sideband method by tacking</span>
+<span class="sd">    a sine factor onto the sweep drive pulse.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        freqs (np.ndarray(dtype=float)): Numpy array of frequencies to sweep.</span>
+<span class="sd">        drive_power (float) : Value of drive amplitude.</span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: Thrown if use more than 75 frequencies; currently, an error will be thrown on the backend </span>
+<span class="sd">                    if you try more than 75 frequencies.</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Qobj: Program for freq sweep experiment.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">75</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;You can only run 75 schedules at a time.&quot;</span><span class="p">)</span>
+        
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;The frequency sweep will go from {freqs[0] / GHz} GHz to {freqs[-1]/ GHz} GHz </span><span class="se">\</span>
+<span class="s2">using {len(freqs)} frequencies. The drive power is </span><span class="si">{drive_power}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="n">base_12_pulse</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span>
+                                        <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span>
+                                        <span class="n">amp</span><span class="o">=</span><span class="n">drive_power</span><span class="p">,</span>
+                                        <span class="n">name</span><span class="o">=</span><span class="s1">&#39;base_12_pulse&#39;</span><span class="p">)</span>
+    <span class="n">schedules</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">jj</span><span class="p">,</span> <span class="n">freq</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">freqs</span><span class="p">):</span>
+        
+        <span class="c1"># add sideband to gaussian pulse</span>
+        <span class="n">freq_sweep_12_pulse</span> <span class="o">=</span> <span class="n">apply_sideband</span><span class="p">(</span><span class="n">base_12_pulse</span><span class="p">,</span> <span class="n">freq</span><span class="p">)</span>
+        
+        <span class="c1"># add commands to schedule</span>
+        <span class="n">schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Frequency = </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">freq</span><span class="p">))</span>
+
+        <span class="c1"># Add 0-&gt;1 pulse, freq sweep pulse and measure</span>
+        <span class="n">schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_01</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span>
+        <span class="n">schedule</span> <span class="o">|=</span> <span class="n">freq_sweep_12_pulse</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span> 
+        <span class="n">schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span> <span class="c1"># shift measurement to after drive pulses</span>
+
+        <span class="n">schedules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">schedule</span><span class="p">)</span>
+
+    <span class="n">num_freqs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span>
+
+    <span class="c1"># draw a schedule</span>
+    <span class="n">display</span><span class="p">(</span><span class="n">schedules</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">channels_to_plot</span><span class="o">=</span><span class="p">[</span><span class="n">drive_chan</span><span class="p">,</span> <span class="n">meas_chan</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">))</span>
+    
+    <span class="c1"># assemble freq sweep program </span>
+    <span class="c1"># Note: LO is at cal_qubit_freq for each schedule; accounted for by sideband</span>
+    <span class="n">excited_freq_sweep_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">(</span><span class="n">schedules</span><span class="p">,</span>
+                                          <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span> 
+                                          <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                                          <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;avg&#39;</span><span class="p">,</span>
+                                          <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                                          <span class="n">schedule_los</span><span class="o">=</span><span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">cal_qubit_freq</span><span class="p">}]</span>
+                                                         <span class="o">*</span> <span class="n">num_freqs</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">excited_freq_sweep_program</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># sweep 400 MHz below 0-&gt;1 frequency to catch the 1-&gt;2 frequency</span>
+<span class="n">num_freqs</span> <span class="o">=</span> <span class="mi">75</span>
+<span class="n">excited_sweep_freqs</span> <span class="o">=</span> <span class="n">cal_qubit_freq</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">400</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="mi">30</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="n">num_freqs</span><span class="p">)</span>
+<span class="n">excited_freq_sweep_program</span> <span class="o">=</span> <span class="n">create_excited_freq_sweep_program</span><span class="p">(</span><span class="n">excited_sweep_freqs</span><span class="p">,</span> <span class="n">drive_power</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+
+<span class="c1"># Plot an example schedule to make sure it&#39;s valid</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>The frequency sweep will go from 4.574349917848895 GHz to 5.004349917848895 GHz using 75 frequencies. The drive power is 0.3.
+</pre>
+</div>
+</div>
+</div>
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_76_1.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">excited_freq_sweep_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">excited_freq_sweep_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">excited_freq_sweep_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">excited_freq_sweep_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e500475d8204b0018fd1d8d
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get job data (avg)</span>
+<span class="n">excited_freq_sweep_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">excited_freq_sweep_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Note: we are only plotting the real part of the signal</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">,</span> <span class="n">excited_freq_sweep_data</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">([</span><span class="nb">min</span><span class="p">(</span><span class="n">excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">)</span><span class="o">+</span><span class="mf">0.01</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">)])</span> <span class="c1"># ignore min point (is off)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Frequency [GHz]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Measured Signal [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;1-&gt;2 Frequency Sweep (first pass)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_80_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We see a minimum around $4.64$ GHz. There are a few spurious maxima, but they are too large to be the $1\rightarrow2$ frequency. The minimum corresponds the $1\rightarrow2$ frequency.</p>
+<p>Using a relative minima function, we computes the value of this point exactly. This gives an estimate for the $1\rightarrow2$ frequency.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Prints out relative minima frequencies in output_data; height gives lower bound (abs val)</span>
+<span class="k">def</span> <span class="nf">rel_minima</span><span class="p">(</span><span class="n">freqs</span><span class="p">,</span> <span class="n">output_data</span><span class="p">,</span> <span class="n">height</span><span class="p">):</span> 
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Prints out relative minima frequencies in output_data (can see peaks); height gives upper bound (abs val).</span>
+<span class="sd">    Be sure to set the height properly or the peak will be ignored!</span>
+<span class="sd">    Args:</span>
+<span class="sd">        freqs (list): frequency list</span>
+<span class="sd">        output_data (list): list of resulting signals</span>
+<span class="sd">        height (float): upper bound (abs val) on a peak</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List containing relative minima frequencies</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">peaks</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">find_peaks</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="o">*</span><span class="n">output_data</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Freq. dips: &quot;</span><span class="p">,</span> <span class="n">freqs</span><span class="p">[</span><span class="n">peaks</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">freqs</span><span class="p">[</span><span class="n">peaks</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">minima</span> <span class="o">=</span> <span class="n">rel_minima</span><span class="p">(</span><span class="n">excited_sweep_freqs</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">excited_freq_sweep_data</span><span class="p">),</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">approx_12_freq</span> <span class="o">=</span> <span class="n">minima</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Freq. dips:  [4.62664722e+09]
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We now use the estimate obtained above to do a refined sweep (ie much smaller range). This will allow us to obtain a more accurate value for the $1\rightarrow2$ frequency. We sweep $20$ MHz in each direction.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># smaller range refined sweep</span>
+<span class="n">num_freqs</span> <span class="o">=</span> <span class="mi">75</span>
+<span class="n">refined_excited_sweep_freqs</span> <span class="o">=</span> <span class="n">approx_12_freq</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">20</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="mi">20</span><span class="o">*</span><span class="n">MHz</span><span class="p">,</span> <span class="n">num_freqs</span><span class="p">)</span>
+<span class="n">refined_excited_freq_sweep_program</span> <span class="o">=</span> <span class="n">create_excited_freq_sweep_program</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="p">,</span> <span class="n">drive_power</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>The frequency sweep will go from 4.606647215146192 GHz to 4.646647215146192 GHz using 75 frequencies. The drive power is 0.3.
+</pre>
+</div>
+</div>
+</div>
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_85_1.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">refined_excited_freq_sweep_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">refined_excited_freq_sweep_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">refined_excited_freq_sweep_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">refined_excited_freq_sweep_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e500520e0084d001878dc14
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get the refined data (average)</span>
+<span class="n">refined_excited_freq_sweep_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">refined_excited_freq_sweep_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Let's plot and fit the refined signal, using the standard Lorentzian curve.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># do fit in Hz</span>
+<span class="p">(</span><span class="n">refined_excited_sweep_fit_params</span><span class="p">,</span> 
+ <span class="n">refined_excited_sweep_y_fit</span><span class="p">)</span> <span class="o">=</span> <span class="n">fit_function</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="p">,</span>
+                                     <span class="n">refined_excited_freq_sweep_data</span><span class="p">,</span> 
+                                     <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">q_freq</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">C</span><span class="p">:</span> <span class="p">(</span><span class="n">A</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">B</span> <span class="o">/</span> <span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">q_freq</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">B</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span> <span class="o">+</span> <span class="n">C</span><span class="p">,</span>
+                                     <span class="p">[</span><span class="o">-</span><span class="mi">12</span><span class="p">,</span> <span class="mf">4.625</span><span class="o">*</span><span class="n">GHz</span><span class="p">,</span> <span class="mf">0.05</span><span class="o">*</span><span class="n">GHz</span><span class="p">,</span> <span class="mi">3</span><span class="o">*</span><span class="n">GHz</span><span class="p">]</span> <span class="c1"># initial parameters for curve_fit</span>
+                                     <span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Note: we are only plotting the real part of the signal</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">,</span> <span class="n">refined_excited_freq_sweep_data</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">,</span> <span class="n">refined_excited_sweep_y_fit</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">([</span><span class="nb">min</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">refined_excited_sweep_freqs</span><span class="o">/</span><span class="n">GHz</span><span class="p">)])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Frequency [GHz]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Measured Signal [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;1-&gt;2 Frequency Sweep (refined pass)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_91_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">_</span><span class="p">,</span> <span class="n">qubit_12_freq</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">refined_excited_sweep_fit_params</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;Our updated estimate for the 1-&gt;2 transition frequency is &quot;</span>
+      <span class="n">f</span><span class="s2">&quot;{round(qubit_12_freq/GHz, 7)} GHz.&quot;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Our updated estimate for the 1-&gt;2 transition frequency is 4.6260876 GHz.
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="2B.-1-&gt;2-Rabi-Experiment--">2B. 1-&gt;2 Rabi Experiment  <a id="rabi12" /><a class="anchor-link" href="#2B.-1-&gt;2-Rabi-Experiment--"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Now that we have a good estimate for the $1\rightarrow2$ frequency, we perform a Rabi experiment to obtain the $\pi$ pulse amplitude for the $1\rightarrow2$ transition. To do so, we apply a $0\rightarrow1$ $\pi$ pulse and then sweep over drive amplitudes at the $1\rightarrow2$ frequency (using the sideband method).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># experimental configuration</span>
+<span class="n">num_rabi_points</span> <span class="o">=</span> <span class="mi">75</span> <span class="c1"># number of experiments (ie amplitudes to sweep out)</span>
+
+<span class="c1"># Drive amplitude values to iterate over: 75 amplitudes evenly spaced from 0 to 1.0</span>
+<span class="n">drive_amp_min</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">drive_amp_max</span> <span class="o">=</span> <span class="mf">1.0</span>
+<span class="n">drive_amps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">drive_amp_min</span><span class="p">,</span> <span class="n">drive_amp_max</span><span class="p">,</span> <span class="n">num_rabi_points</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create schedule</span>
+<span class="n">rabi_12_schedules</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="c1"># loop over all drive amplitudes</span>
+<span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">drive_amp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">):</span>
+    
+    <span class="n">base_12_pulse</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span>
+                                       <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span>
+                                       <span class="n">amp</span><span class="o">=</span><span class="n">drive_amp</span><span class="p">,</span>
+                                       <span class="n">name</span><span class="o">=</span><span class="s1">&#39;base_12_pulse&#39;</span><span class="p">)</span>
+    <span class="c1"># apply sideband at the 1-&gt;2 frequency</span>
+    <span class="n">rabi_12_pulse</span> <span class="o">=</span> <span class="n">apply_sideband</span><span class="p">(</span><span class="n">base_12_pulse</span><span class="p">,</span> <span class="n">qubit_12_freq</span><span class="p">)</span>
+    
+    <span class="c1"># add commands to schedule</span>
+    <span class="n">schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;Rabi Experiment at drive amp = </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">drive_amp</span><span class="p">)</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_01</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> <span class="c1"># 0-&gt;1</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">rabi_12_pulse</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span> <span class="c1"># 1-&gt;2 Rabi pulse</span>
+    <span class="n">schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">schedule</span><span class="o">.</span><span class="n">duration</span> <span class="c1"># shift measurement to after drive pulse</span>
+    
+    <span class="n">rabi_12_schedules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">schedule</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Assemble the schedules into a program</span>
+<span class="c1"># Note: The LO frequency is at cal_qubit_freq to support the 0-&gt;1 pi pulse;</span>
+<span class="c1"># it is modified for the 1-&gt;2 pulse using sidebanding</span>
+<span class="n">rabi_12_expt_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">(</span><span class="n">rabi_12_schedules</span><span class="p">,</span>
+                                <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+                                <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                                <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;avg&#39;</span><span class="p">,</span>
+                                <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                                <span class="n">schedule_los</span><span class="o">=</span><span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">cal_qubit_freq</span><span class="p">}]</span>
+                                               <span class="o">*</span> <span class="n">num_rabi_points</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">rabi_12_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">rabi_12_expt_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">rabi_12_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">rabi_12_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e5005b429f0c90019813709
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get the job data (average)</span>
+<span class="n">rabi_12_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">rabi_12_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We plot and fit our data as before.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Note: We only plot the real part of the signal.</span>
+<span class="n">rabi_12_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">baseline_remove</span><span class="p">(</span><span class="n">rabi_12_data</span><span class="p">))</span>
+<span class="p">(</span><span class="n">rabi_12_fit_params</span><span class="p">,</span> 
+ <span class="n">rabi_12_y_fit</span><span class="p">)</span> <span class="o">=</span> <span class="n">fit_function</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span>
+                            <span class="n">rabi_12_data</span><span class="p">,</span> 
+                            <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">drive_12_period</span><span class="p">,</span> <span class="n">phi</span><span class="p">:</span> <span class="p">(</span><span class="n">A</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">x</span><span class="o">/</span><span class="n">drive_12_period</span> <span class="o">-</span> <span class="n">phi</span><span class="p">)</span> <span class="o">+</span> <span class="n">B</span><span class="p">),</span>
+                            <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span> <span class="n">rabi_12_data</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">drive_amps</span><span class="p">,</span> <span class="n">rabi_12_y_fit</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+
+<span class="n">drive_12_period</span> <span class="o">=</span> <span class="n">rabi_12_fit_params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+<span class="c1"># account for phi in computing pi amp</span>
+<span class="n">pi_amp_12</span> <span class="o">=</span> <span class="p">(</span><span class="n">drive_12_period</span><span class="o">/</span><span class="mi">2</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">+</span><span class="n">rabi_12_fit_params</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">pi_amp_12</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s1">&#39;--&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">pi_amp_12</span><span class="o">+</span><span class="n">drive_12_period</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s1">&#39;--&#39;</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_12</span><span class="o">+</span><span class="n">drive_12_period</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">xytext</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_12</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span> <span class="n">arrowprops</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">arrowstyle</span><span class="o">=</span><span class="s2">&quot;&lt;-&gt;&quot;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="s2">&quot;$\pi$&quot;</span><span class="p">,</span> <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="n">pi_amp_12</span><span class="o">-</span><span class="mf">0.03</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">&quot;Drive amp [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Measured signal [a.u.]&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Rabi Experiment (1-&gt;2)&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_102_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;Pi Amplitude (1-&gt;2) = </span><span class="si">{pi_amp_12}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Pi Amplitude (1-&gt;2) = 0.4285953321921466
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>With this information, we can define our $1\rightarrow2$ $\pi$ pulse (making sure to add a sideband at the $1\rightarrow2$ frequency).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">pi_pulse_12</span> <span class="o">=</span> <span class="n">pulse_lib</span><span class="o">.</span><span class="n">gaussian</span><span class="p">(</span><span class="n">duration</span><span class="o">=</span><span class="n">drive_samples</span><span class="p">,</span>
+                                 <span class="n">amp</span><span class="o">=</span><span class="n">pi_amp_12</span><span class="p">,</span> 
+                                 <span class="n">sigma</span><span class="o">=</span><span class="n">drive_sigma</span><span class="p">,</span>
+                                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;pi_pulse_12&#39;</span><span class="p">)</span>
+<span class="c1"># make sure this pulse is sidebanded</span>
+<span class="n">pi_pulse_12</span> <span class="o">=</span> <span class="n">apply_sideband</span><span class="p">(</span><span class="n">pi_pulse_12</span><span class="p">,</span> <span class="n">qubit_12_freq</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="2C.-Build-the-0,-1,-2-discriminator-">2C. Build the 0, 1, 2 discriminator <a id="builddiscrim012" /><a class="anchor-link" href="#2C.-Build-the-0,-1,-2-discriminator-"> </a></h3>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Finally, we build our discriminator for the $|0\rangle$, $|1\rangle$ and $|2\rangle$ states. The procedure is analagous to section <a href="#discrim01">1</a>, however now we add an additional schedule for the $|2\rangle$ state.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>As a review, our three schedules are (again, recalling that our system starts in the $|0\rangle$ state):</p>
+<ol>
+<li>Measure the $|0\rangle$ state directly (obtain $|0\rangle$ centroid).</li>
+<li>Apply $0\rightarrow1$ $\pi$ pulse and then measure (obtain $|1\rangle$ centroid).</li>
+<li>Apply $0\rightarrow1$ $\pi$ pulse, then $1\rightarrow2$ $\pi$ pulse, then measure (obtain $|2\rangle$ centroid).</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create the three schedules</span>
+
+<span class="c1"># Ground state schedule</span>
+<span class="n">zero_schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;zero schedule&quot;</span><span class="p">)</span>
+<span class="n">zero_schedule</span> <span class="o">|=</span> <span class="n">measure</span>
+
+<span class="c1"># Excited state schedule</span>
+<span class="n">one_schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;one schedule&quot;</span><span class="p">)</span>
+<span class="n">one_schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_01</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> 
+<span class="n">one_schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">one_schedule</span><span class="o">.</span><span class="n">duration</span>
+
+<span class="c1"># Excited state schedule</span>
+<span class="n">two_schedule</span> <span class="o">=</span> <span class="n">pulse</span><span class="o">.</span><span class="n">Schedule</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;two schedule&quot;</span><span class="p">)</span>
+<span class="n">two_schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_01</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span>
+<span class="n">two_schedule</span> <span class="o">|=</span> <span class="n">pi_pulse_12</span><span class="p">(</span><span class="n">drive_chan</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">two_schedule</span><span class="o">.</span><span class="n">duration</span>
+<span class="n">two_schedule</span> <span class="o">|=</span> <span class="n">measure</span> <span class="o">&lt;&lt;</span> <span class="n">two_schedule</span><span class="o">.</span><span class="n">duration</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We construct the program and plot the centroids in the IQ plane.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Assemble the schedules into a program</span>
+<span class="n">IQ_012_program</span> <span class="o">=</span> <span class="n">assemble</span><span class="p">([</span><span class="n">zero_schedule</span><span class="p">,</span> <span class="n">one_schedule</span><span class="p">,</span> <span class="n">two_schedule</span><span class="p">],</span>
+                           <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+                           <span class="n">meas_level</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                           <span class="n">meas_return</span><span class="o">=</span><span class="s1">&#39;single&#39;</span><span class="p">,</span>
+                           <span class="n">shots</span><span class="o">=</span><span class="n">NUM_SHOTS</span><span class="p">,</span>
+                           <span class="n">schedule_los</span><span class="o">=</span><span class="p">[{</span><span class="n">drive_chan</span><span class="p">:</span> <span class="n">cal_qubit_freq</span><span class="p">}]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">IQ_012_job</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">IQ_012_program</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">IQ_012_job</span><span class="o">.</span><span class="n">job_id</span><span class="p">())</span>
+<span class="n">job_monitor</span><span class="p">(</span><span class="n">IQ_012_job</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>5e500671c3e1b80018b180bb
+Job Status: job has successfully run
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Get job data (single); split for zero, one and two</span>
+<span class="n">IQ_012_data</span> <span class="o">=</span> <span class="n">get_job_data</span><span class="p">(</span><span class="n">IQ_012_job</span><span class="p">,</span> <span class="n">average</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">zero_data</span> <span class="o">=</span> <span class="n">IQ_012_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">one_data</span> <span class="o">=</span> <span class="n">IQ_012_data</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">two_data</span> <span class="o">=</span> <span class="n">IQ_012_data</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">IQ_012_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Helper function for plotting IQ plane for 0, 1, 2. Limits of plot given</span>
+<span class="sd">    as arguments.&quot;&quot;&quot;</span>
+    <span class="c1"># zero data plotted in blue</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">zero_data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">zero_data</span><span class="p">),</span> 
+                    <span class="n">s</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$|0\rangle$&#39;</span><span class="p">)</span>
+    <span class="c1"># one data plotted in red</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">one_data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">one_data</span><span class="p">),</span> 
+                    <span class="n">s</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$|1\rangle$&#39;</span><span class="p">)</span>
+    <span class="c1"># two data plotted in green</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">two_data</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">two_data</span><span class="p">),</span> 
+                    <span class="n">s</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;green&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;$|2\rangle$&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Plot a large dot for the average result of the 0, 1 and 2 states.</span>
+    <span class="n">mean_zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">zero_data</span><span class="p">)</span> <span class="c1"># takes mean of both real and imaginary parts</span>
+    <span class="n">mean_one</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">one_data</span><span class="p">)</span>
+    <span class="n">mean_two</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">two_data</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">mean_zero</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">mean_zero</span><span class="p">),</span> 
+                <span class="n">s</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span><span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">mean_one</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">mean_one</span><span class="p">),</span> 
+                <span class="n">s</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span><span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">mean_two</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">imag</span><span class="p">(</span><span class="n">mean_two</span><span class="p">),</span> 
+                <span class="n">s</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span><span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="n">y_min</span><span class="p">,</span><span class="n">y_max</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;I [a.u.]&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Q [a.u.]&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;0-1-2 discrimination&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">x_min</span> <span class="o">=</span> <span class="o">-</span><span class="mi">20</span>
+<span class="n">x_max</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">y_min</span> <span class="o">=</span> <span class="o">-</span><span class="mi">10</span>
+<span class="n">y_max</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">IQ_012_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_116_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We now observe a third centroid corresponding to the $|2\rangle$ state. (Note: If the plot looks off, rerun the notebook)</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>With this data, we can build our discriminator. Again, we use <code>scikit.learn</code> and Linear Discriminant Analysis (LDA).</p>
+<p>We begin by shaping the data for LDA.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Create IQ vector (split real, imag parts)</span>
+<span class="n">zero_data_reshaped</span> <span class="o">=</span> <span class="n">reshape_complex_vec</span><span class="p">(</span><span class="n">zero_data</span><span class="p">)</span>
+<span class="n">one_data_reshaped</span> <span class="o">=</span> <span class="n">reshape_complex_vec</span><span class="p">(</span><span class="n">one_data</span><span class="p">)</span>  
+<span class="n">two_data_reshaped</span> <span class="o">=</span> <span class="n">reshape_complex_vec</span><span class="p">(</span><span class="n">two_data</span><span class="p">)</span>  
+
+<span class="n">IQ_012_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">zero_data_reshaped</span><span class="p">,</span> <span class="n">one_data_reshaped</span><span class="p">,</span> <span class="n">two_data_reshaped</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">IQ_012_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="c1"># verify IQ data shape</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>(3072, 2)
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Next, we split our training and testing data (again, half and half). The testing data is a vector containing an array of <code>0</code>'s (for the zero schedule, <code>1</code>'s (for the one schedule) and <code>2</code>'s (for the two schedule).</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># construct vector w/ 0&#39;s, 1&#39;s and 2&#39;s (for testing)</span>
+<span class="n">state_012</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">NUM_SHOTS</span><span class="p">)</span> <span class="c1"># shots gives number of experiments</span>
+<span class="n">state_012</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">state_012</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">NUM_SHOTS</span><span class="p">)))</span>
+<span class="n">state_012</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">state_012</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">NUM_SHOTS</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">state_012</span><span class="p">))</span>
+
+<span class="c1"># Shuffle and split data into training and test sets</span>
+<span class="n">IQ_012_train</span><span class="p">,</span> <span class="n">IQ_012_test</span><span class="p">,</span> <span class="n">state_012_train</span><span class="p">,</span> <span class="n">state_012_test</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span><span class="n">IQ_012_data</span><span class="p">,</span> <span class="n">state_012</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>3072
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Finally, we set up our model and train it. The accuracy of our fit is printed.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Set up the LDA</span>
+<span class="n">LDA_012</span> <span class="o">=</span> <span class="n">LinearDiscriminantAnalysis</span><span class="p">()</span>
+<span class="n">LDA_012</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">IQ_012_train</span><span class="p">,</span> <span class="n">state_012_train</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>LinearDiscriminantAnalysis(n_components=None, priors=None, shrinkage=None,
+                           solver=&#39;svd&#39;, store_covariance=False, tol=0.0001)</pre>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># test on some simple data </span>
+<span class="nb">print</span><span class="p">(</span><span class="n">LDA_012</span><span class="o">.</span><span class="n">predict</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">15</span><span class="p">,</span> <span class="o">-</span><span class="mi">5</span><span class="p">]]))</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>[0. 1. 2.]
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="c1"># Compute accuracy</span>
+<span class="n">score_012</span> <span class="o">=</span> <span class="n">LDA_012</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">IQ_012_test</span><span class="p">,</span> <span class="n">state_012_test</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">score_012</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>0.9088541666666666
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The last step is to plot the separatrix.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="n">IQ_012_plot</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">)</span>
+<span class="n">separatrixPlot</span><span class="p">(</span><span class="n">LDA_012</span><span class="p">,</span> <span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">,</span> <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">,</span> <span class="n">NUM_SHOTS</span><span class="p">)</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+
+<div class="output_png output_subarea ">
+<img src="../images/ch-quantum-hardware/accessing_higher_energy_states_127_0.png"
+>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Now that we have 3 centroids, the separatrix is no longer a line, but rather a curve containing a combination of two lines. In order to discriminate between $|0\rangle$, $|1\rangle$ and $|2\rangle$ states, our model checks where the IQ point lies relative to the separatrix and classifies the point accordingly.</p>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="3.-References-">3. References <a id="refs" /><a class="anchor-link" href="#3.-References-"> </a></h2>
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing text_cell rendered"><div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<ol>
+<li>D. C. McKay, T. Alexander, L. Bello, M. J. Biercuk, L. Bishop, J. Chen, J. M. Chow, A. D. C ́orcoles, D. Egger, S. Filipp, J. Gomez, M. Hush, A. Javadi-Abhari, D. Moreda, P. Nation, B. Paulovicks, E. Winston, C. J. Wood, J. Wootton, and J. M. Gambetta, “Qiskit backend specifications for OpenQASM and OpenPulse experiments,” 2018, <a href="https://arxiv.org/abs/1809.03452">https://arxiv.org/abs/1809.03452</a>.</li>
+<li>Krantz, P. et al. “A Quantum Engineer’s Guide to Superconducting Qubits.” Applied Physics Reviews 6.2 (2019): 021318, <a href="https://arxiv.org/abs/1904.06560">https://arxiv.org/abs/1904.06560</a>.</li>
+<li>Scikit-learn: Machine Learning in Python, Pedregosa et al., JMLR 12, pp. 2825-2830, 2011, <a href="https://scikit-learn.org/stable/modules/lda_qda.html#id4">https://scikit-learn.org/stable/modules/lda_qda.html#id4</a>.</li>
+</ol>
+
+</div>
+</div>
+</div>
+</div>
+
+<div class="jb_cell">
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">qiskit.tools.jupyter</span>
+<span class="o">%</span><span class="k">qiskit_version_table</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+<div class="jb_output_wrapper }}">
+<div class="output_area">
+
+
+<div class="output_html rendered_html output_subarea ">
+<h3>Version Information</h3><table><tr><th>Qiskit Software</th><th>Version</th></tr><tr><td>Qiskit</td><td>0.15.0</td></tr><tr><td>Terra</td><td>0.12.0</td></tr><tr><td>Aer</td><td>0.4.0</td></tr><tr><td>Ignis</td><td>0.2.0</td></tr><tr><td>Aqua</td><td>0.6.4</td></tr><tr><td>IBM Q Provider</td><td>0.4.6</td></tr><tr><th>System information</th></tr><tr><td>Python</td><td>3.7.3 (default, Mar 27 2019, 16:54:48) 
+[Clang 4.0.1 (tags/RELEASE_401/final)]</td></tr><tr><td>OS</td><td>Darwin</td></tr><tr><td>CPUs</td><td>8</td></tr><tr><td>Memory (Gb)</td><td>16.0</td></tr><tr><td colspan='2'>Fri Feb 21 11:35:00 2020 EST</td></tr></table>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+ 
+
+
+    </main>
+    
